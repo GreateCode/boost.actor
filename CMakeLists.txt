@@ -1,432 +1,516 @@
 cmake_minimum_required(VERSION 2.8)
-project(boost_actor C CXX)
+project(boost-actor C CXX)
+
+# silence policy CMP0042 warning by enabling RPATH explicitly
+if(APPLE AND NOT DEFINED CMAKE_MACOSX_RPATH)
+  set(CMAKE_MACOSX_RPATH true)
+endif()
+
+################################################################################
+#   make sure all variables are set to "no" if undefined for summary output    #
+################################################################################
+
+if(NOT BOOST_ACTOR_ENABLE_RUNTIME_CHECKS)
+  set(BOOST_ACTOR_ENABLE_RUNTIME_CHECKS no)
+endif()
+if(NOT BOOST_ACTOR_NO_MEM_MANAGEMENT)
+  set(BOOST_ACTOR_NO_MEM_MANAGEMENT no)
+endif()
+if(NOT BOOST_ACTOR_BUILD_STATIC_ONLY)
+  set(BOOST_ACTOR_BUILD_STATIC_ONLY no)
+endif()
+if(NOT BOOST_ACTOR_BUILD_STATIC)
+  set(BOOST_ACTOR_BUILD_STATIC no)
+endif()
+if(NOT BOOST_ACTOR_NO_SUMMARY)
+  set(BOOST_ACTOR_NO_SUMMARY no)
+endif()
+
+
+################################################################################
+#                              get version of CAF                              #
+################################################################################
+
+# read content of config.hpp
+file(READ "libboost_actor_core/boost/actor/config.hpp" CONFIG_HPP)
+# get line containing the version
+string(REGEX MATCH "#define BOOST_ACTOR_VERSION [0-9]+" VERSION_LINE "${CONFIG_HPP}")
+# extract version number from line
+string(REGEX MATCH "[0-9]+" VERSION_INT "${VERSION_LINE}")
+# calculate major, minor, and patch version
+math(EXPR BOOST_ACTOR_VERSION_MAJOR "${VERSION_INT} / 10000")
+math(EXPR BOOST_ACTOR_VERSION_MINOR "( ${VERSION_INT} / 100) % 100")
+math(EXPR BOOST_ACTOR_VERSION_PATCH "${VERSION_INT} % 100")
+# create full version string
+set(BOOST_ACTOR_VERSION
+    "${BOOST_ACTOR_VERSION_MAJOR}.${BOOST_ACTOR_VERSION_MINOR}.${BOOST_ACTOR_VERSION_PATCH}")
+
+
+################################################################################
+#   set output paths for binaries and libraries if not provided by the user    #
+################################################################################
 
 # prohibit in-source builds
-if ("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
+if("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}")
     message(FATAL_ERROR "In-source builds are not allowed. Please use "
                         "./configure to choose a build directory and "
                         "initialize the build configuration.")
-endif ()
-
-set (CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
-
-# set binary output path
-if ("${EXECUTABLE_OUTPUT_PATH}" STREQUAL "")
-  set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}/bin")
-endif ()
-
-# set library output path
-if ("${LIBRARY_OUTPUT_PATH}" STREQUAL "")
-  set(LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}/lib")
-endif ()
-
-# set library output path to binary output path for Xcode projects
-if ("${CMAKE_GENERATOR}" STREQUAL "Xcode")
+endif()
+# set module path appropriately
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+# set binary output path if not defined by user
+if("${EXECUTABLE_OUTPUT_PATH}" STREQUAL "")
+  set(EXECUTABLE_OUTPUT_PATH "${CMAKE_CURRENT_BINARY_DIR}/bin")
+endif()
+# set library output path if not defined by user, but always set
+# library output path to binary output path for Xcode projects
+if("${CMAKE_GENERATOR}" STREQUAL "Xcode")
   set(LIBRARY_OUTPUT_PATH "${EXECUTABLE_OUTPUT_PATH}")
-endif ()
+elseif("${LIBRARY_OUTPUT_PATH}" STREQUAL "")
+  set(LIBRARY_OUTPUT_PATH "${CMAKE_CURRENT_BINARY_DIR}/lib")
+endif()
+
+
+################################################################################
+#                                compiler setup                                #
+################################################################################
 
 # check for g++ >= 4.7 or clang++ > = 3.2
-try_run(ProgramResult
-        CompilationSucceeded
-  ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/get_compiler_version.cpp
-        RUN_OUTPUT_VARIABLE CompilerVersion)
-if (NOT CompilationSucceeded OR NOT ProgramResult EQUAL 0)
-  message(FATAL_ERROR "Cannot determine compiler version")
-elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-  if (CompilerVersion VERSION_GREATER 4.6)
-    message(STATUS "Found g++ version ${CompilerVersion}")
-  else ()
-    message(FATAL_ERROR "g++ >= 4.7 required (found: ${CompilerVersion}.")
-  endif ()
-elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-  if (CompilerVersion VERSION_GREATER 3.1)
-    message(STATUS "Found clang++ version ${CompilerVersion}")
-  else ()
-    message(FATAL_ERROR "clang++ >= 3.2 required (found: ${CompilerVersion}.")
-  endif ()
-  if (NOT CXXFLAGS_PROVIDED)
-    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-backtrace-limit=0")
-    message(STATUS "NOTE: Automatically added -stdlib=libc++ flag, "
-                   "you can override this by defining CMAKE_CXX_FLAGS "
-                   "(see 'configure --help')")
-    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-  endif ()
-else ()
-  message(FATAL_ERROR "Your C++ compiler does not support C++11 "
-                      "or is not supported")
-endif ()
-
-# check if the user provided CXXFLAGS on the command line
-if (CMAKE_CXX_FLAGS)
-  set(CXXFLAGS_PROVIDED true)
+if(NOT WIN32 AND NOT BOOST_ACTOR_NO_COMPILER_CHECK)
+  try_run(ProgramResult
+          CompilationSucceeded
+          "${CMAKE_CURRENT_BINARY_DIR}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/cmake/get_compiler_version.cpp"
+          RUN_OUTPUT_VARIABLE CompilerVersion)
+  if(NOT CompilationSucceeded OR NOT ProgramResult EQUAL 0)
+    message(FATAL_ERROR "Cannot determine compiler version")
+  elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
+    if(CompilerVersion VERSION_GREATER 4.6)
+      message(STATUS "Found g++ version ${CompilerVersion}")
+    else()
+      message(FATAL_ERROR "g++ >= 4.7 required (found: ${CompilerVersion})")
+    endif()
+  elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    if(CompilerVersion VERSION_GREATER 3.1)
+      message(STATUS "Found clang++ version ${CompilerVersion}")
+    else()
+      message(FATAL_ERROR "clang++ >= 3.2 required (found: ${CompilerVersion})")
+    endif()
+  else()
+    message(FATAL_ERROR "Your C++ compiler does not support C++11 "
+                        "or is not supported")
+  endif()
+endif()
+# set optional build flags
+set(EXTRA_FLAGS "")
+# add "-Werror" flag if --pedantic-build is used
+if(BOOST_ACTOR_CXX_WARNINGS_AS_ERRORS)
+  set(EXTRA_FLAGS "-Werror")
+endif()
+# enable a ton of warnings if --more-clang-warnings is used
+if(BOOST_ACTOR_MORE_WARNINGS)
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    set(WFLAGS "-Weverything -Wno-c++98-compat -Wno-padded "
+               "-Wno-documentation-unknown-command -Wno-exit-time-destructors "
+               "-Wno-global-constructors -Wno-missing-prototypes "
+               "-Wno-c++98-compat-pedantic -Wno-unused-member-function "
+               "-Wno-unused-const-variable -Wno-switch-enum "
+               "-Wno-missing-noreturn -Wno-covered-switch-default")
+  elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
+    set(WFLAGS "-Waddress -Wall -Warray-bounds "
+               "-Wattributes -Wbuiltin-macro-redefined -Wcast-align "
+               "-Wcast-qual -Wchar-subscripts -Wclobbered -Wcomment "
+               "-Wconversion -Wconversion-null -Wcoverage-mismatch "
+               "-Wcpp -Wdelete-non-virtual-dtor -Wdeprecated "
+               "-Wdeprecated-declarations -Wdiv-by-zero -Wdouble-promotion "
+               "-Wempty-body -Wendif-labels -Wenum-compare -Wextra "
+               "-Wfloat-equal -Wformat -Wfree-nonheap-object "
+               "-Wignored-qualifiers -Winit-self "
+               "-Winline -Wint-to-pointer-cast -Winvalid-memory-model "
+               "-Winvalid-offsetof -Wlogical-op -Wmain -Wmaybe-uninitialized "
+               "-Wmissing-braces -Wmissing-field-initializers -Wmultichar "
+               "-Wnarrowing -Wnoexcept -Wnon-template-friend "
+               "-Wnon-virtual-dtor -Wnonnull -Woverflow "
+               "-Woverlength-strings -Wparentheses "
+               "-Wpmf-conversions -Wpointer-arith -Wreorder "
+               "-Wreturn-type -Wsequence-point -Wshadow "
+               "-Wsign-compare -Wswitch -Wtype-limits -Wundef "
+               "-Wuninitialized -Wunused -Wvla -Wwrite-strings")
+  endif()
+  # convert CMake list to a single string, erasing the ";" separators
+  string(REPLACE ";" "" WFLAGS_STR ${WFLAGS})
+  set(EXTRA_FLAGS "${EXTRA_FLAGS} ${WFLAGS_STR}")
+endif()
+# add -stdlib=libc++ when using Clang if possible
+if(NOT BOOST_ACTOR_NO_AUTO_LIBCPP AND "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+  set(CXXFLAGS_BACKUP "${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "-std=c++11 -stdlib=libc++")
+  try_run(ProgramResult
+          CompilationSucceeded
+          "${CMAKE_CURRENT_BINARY_DIR}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/cmake/get_compiler_version.cpp"
+          RUN_OUTPUT_VARIABLE CompilerVersion)
+  if(NOT CompilationSucceeded OR NOT ProgramResult EQUAL 0)
+    message(STATUS "Use clang with GCC' libstdc++")
+  else()
+    message(STATUS "Automatically added '-stdlib=libc++' flag "
+                   "(BOOST_ACTOR_NO_AUTO_LIBCPP not defined)")
+    set(EXTRA_FLAGS "${EXTRA_FLAGS} -stdlib=libc++")
+  endif()
+  # restore CXX flags
+  set(CMAKE_CXX_FLAGS "${CXXFLAGS_BACKUP}")
+endif()
+# enable address sanitizer if requested by the user
+if(BOOST_ACTOR_ENABLE_ADDRESS_SANITIZER)
+  # check whether address sanitizer is available
+  set(CXXFLAGS_BACKUP "${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "-fsanitize=address -fno-omit-frame-pointer")
+  try_run(ProgramResult
+          CompilationSucceeded
+          "${CMAKE_CURRENT_BINARY_DIR}"
+          "${CMAKE_CURRENT_SOURCE_DIR}/cmake/get_compiler_version.cpp")
+  if(NOT CompilationSucceeded)
+    message(WARNING "Address Sanitizer is not available on selected compiler")
+  else()
+    message(STATUS "Enable Address Sanitizer")
+    set(EXTRA_FLAGS "${EXTRA_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
+  endif()
+  # restore CXX flags
+  set(CMAKE_CXX_FLAGS "${CXXFLAGS_BACKUP}")
+endif(BOOST_ACTOR_ENABLE_ADDRESS_SANITIZER)
+# -pthread is ignored on MacOSX but required on other platforms
+if(NOT APPLE AND NOT WIN32)
+  set(EXTRA_FLAGS "${EXTRA_FLAGS} -pthread")
+endif()
+# -fPIC generates warnings on MinGW plus extra setup steps needed on MinGW
+if(MINGW)
+  add_definitions(-D_WIN32_WINNT=0x0600)
+  add_definitions(-DWIN32)
+  include(GenerateExportHeader)
+  set(LD_FLAGS "ws2_32 -liphlpapi")
+  # build static to avoid runtime dependencies to GCC libraries
+  set(EXTRA_FLAGS "${EXTRA_FLAGS} -static")
+else()
+  set(EXTRA_FLAGS "${EXTRA_FLAGS} -fPIC")
+endif()
+if (WIN32)
+  set(LD_FLAGS ${LD_FLAGS} ws2_32 iphlpapi)
+endif()
+# iOS support
+if(BOOST_ACTOR_OSX_SYSROOT)
+  set(CMAKE_OSX_SYSROOT "${BOOST_ACTOR_OSX_SYSROOT}")
+endif()
+if(BOOST_ACTOR_IOS_DEPLOYMENT_TARGET)
+  if("${BOOST_ACTOR_OSX_SYSROOT}" STREQUAL "iphonesimulator")
+    set(EXTRA_FLAGS "${EXTRA_FLAGS} -mios-simulator-version-min=${BOOST_ACTOR_IOS_DEPLOYMENT_TARGET}")
+  else()
+    set(EXTRA_FLAGS "${EXTRA_FLAGS} -miphoneos-version-min=${BOOST_ACTOR_IOS_DEPLOYMENT_TARGET}")
+  endif()
+endif()
+# check if the user provided CXXFLAGS, set defaults otherwise
+if(CMAKE_CXX_FLAGS)
   set(CMAKE_CXX_FLAGS_DEBUG          "")
   set(CMAKE_CXX_FLAGS_MINSIZEREL     "")
   set(CMAKE_CXX_FLAGS_RELEASE        "")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "")
-else (CMAKE_CXX_FLAGS)
-  set(CXXFLAGS_PROVIDED false)
-  if (MORE_CLANG_WARNINGS AND "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-    set(CMAKE_CXX_FLAGS "-std=c++11 -pedantic -Weverything -Wno-c++98-compat -Wno-padded -Wno-documentation-unknown-command -Wno-exit-time-destructors -Wno-global-constructors -Wno-missing-prototypes -Wno-c++98-compat-pedantic -Wno-unused-member-function -Wno-unused-const-variable -ftemplate-backtrace-limit=0")
-  else ()
-    set(CMAKE_CXX_FLAGS "-std=c++11 -Wextra -Wall -pedantic -ftemplate-backtrace-limit=0")
-  endif ()
-  if (MINGW)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWIN32")
-    include (GenerateExportHeader)
-  endif(MINGW)
+else()
+  set(CMAKE_CXX_FLAGS "-std=c++11 -Wextra -Wall -pedantic ${EXTRA_FLAGS}")
   set(CMAKE_CXX_FLAGS_DEBUG          "-O0 -g")
   set(CMAKE_CXX_FLAGS_MINSIZEREL     "-Os")
   set(CMAKE_CXX_FLAGS_RELEASE        "-O3 -DNDEBUG")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g")
-endif (CMAKE_CXX_FLAGS)
-
-include(CheckIncludeFileCXX)
-check_include_file_cxx("valgrind/valgrind.h" HAVE_VALGRIND_H)
-if (HAVE_VALGRIND_H)
-  set(VALGRIND "yes")
-  add_definitions(-DBOOST_ACTOR_ANNOTATE_VALGRIND)
-else (HAVE_VALGRIND_H)
-  set(VALGRIND "no")
-endif (HAVE_VALGRIND_H)
-
-# set build type (evaluate ENABLE_DEBUG flag)
-if (ENABLE_DEBUG)
-  set(CMAKE_BUILD_TYPE Debug)
-  add_definitions(-DBOOST_ACTOR_DEBUG_MODE)
-  message(STATUS "Enable libboost_actor's debug mode")
-endif (ENABLE_DEBUG)
-
-if (ENABLE_ADDRESS_SANITIZER)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
-  message(STATUS "Enable address sanitizer")
-endif (ENABLE_ADDRESS_SANITIZER)
-
-if (BOOST_ACTOR_LOG_LEVEL)
-  add_definitions(-DBOOST_ACTOR_LOG_LEVEL=${BOOST_ACTOR_LOG_LEVEL})
-endif(BOOST_ACTOR_LOG_LEVEL)
-
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-
-# set build default build type if not set
-if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
+endif()
+# set build default build type to RelWithDebInfo if not set
+if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
-endif ("${CMAKE_BUILD_TYPE}" STREQUAL "")
+endif()
+# needed by subprojects
+set(LD_FLAGS ${LD_FLAGS} ${CMAKE_LD_LIBS})
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-  set(LIBBOOST_ACTOR_PLATFORM_SRC src/middleman_event_handler_epoll.cpp)
-elseif (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-  set(LIBBOOST_ACTOR_PLATFORM_SRC src/middleman_event_handler_poll.cpp)
-elseif (${CMAKE_SYSTEM_NAME} MATCHES "Window")
-  set(LIBBOOST_ACTOR_PLATFORM_SRC src/middleman_event_handler_poll.cpp src/execinfo_windows.cpp)
-else ()
-  message(FATAL_ERROR "This platform is not supported by libboost_actor")
+
+################################################################################
+#                    check for biicode build pipeline                          #
+################################################################################
+IF(BIICODE)
+  # define the biicode target and let it do its thing
+  ADD_BII_TARGETS()
+
+  # but first specify the compiled/linker options calculated above
+  string(REPLACE " " ";" REPLACED_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+  target_compile_options(${BII_BLOCK_TARGET} INTERFACE ${REPLACED_CXX_FLAGS})
+
+  IF (LD_FLAGS STREQUAL "")
+    string(REPLACE " " ";" REPLACED_LD_FLAGS ${LD_FLAGS})
+    target_link_libraries(${BII_BLOCK_TARGET} INTERFACE ${REPLACED_LD_FLAGS})
+  ENDIF()
+
+  RETURN()
+ENDIF()
+
+################################################################################
+#                       configure build_config.hpp header                      #
+################################################################################
+
+if(BOOST_ACTOR_LOG_LEVEL)
+  set(BOOST_ACTOR_LOG_LEVEL_INT ${BOOST_ACTOR_LOG_LEVEL})
+else()
+  set(BOOST_ACTOR_LOG_LEVEL_INT -1)
 endif()
 
-# list cpp files including platform-dependent files
-set(LIBBOOST_ACTOR_SRC
-    ${LIBBOOST_ACTOR_PLATFORM_SRC}
-    src/abstract_actor.cpp
-    src/abstract_channel.cpp
-    src/abstract_group.cpp
-    src/abstract_tuple.cpp
-    src/acceptor.cpp
-    src/actor.cpp
-    src/actor_addr.cpp
-    src/actor_namespace.cpp
-    src/actor_proxy.cpp
-    src/actor_registry.cpp
-    src/actor_ostream.cpp
-    src/atom.cpp
-    src/attachable.cpp
-    src/behavior.cpp
-    src/behavior_stack.cpp
-    src/binary_deserializer.cpp
-    src/binary_serializer.cpp
-    src/broker.cpp
-    src/buffer.cpp
-    src/blocking_actor.cpp
-    src/channel.cpp
-    src/context_switching_resume.cpp
-    src/continuable.cpp
-    src/continue_helper.cpp
-    src/cs_thread.cpp
-    src/decorated_tuple.cpp
-    src/default_message_queue.cpp
-    src/actor_proxy.cpp
-    src/peer.cpp
-    src/peer_acceptor.cpp
-    src/demangle.cpp
-    src/deserializer.cpp
-    src/duration.cpp
-    src/event_based_actor.cpp
-    src/exception.cpp
-    src/execution_unit.cpp
-    src/exit_reason.cpp
-    src/fd_util.cpp
-    src/functor_based_actor.cpp
-    src/functor_based_blocking_actor.cpp
-    src/get_root_uuid.cpp
-    src/get_mac_addresses.cpp
-    src/group.cpp
-    src/group_manager.cpp
-    src/input_stream.cpp
-    src/local_actor.cpp
-    src/logging.cpp
-    src/mailbox_element.cpp
-    src/max_msg_size.cpp
-    src/memory.cpp
-    src/memory_managed.cpp
-    src/message.cpp
-    src/message_builder.cpp
-    src/message_header.cpp
-    src/middleman.cpp
-    src/middleman_event_handler.cpp
-    src/node_id.cpp
-    src/output_stream.cpp
-    src/partial_function.cpp
-    src/ref_counted.cpp
-    src/resumable.cpp
-    src/remote_actor_proxy.cpp
-    src/response_promise.cpp
-    src/ripemd_160.cpp
-    src/scheduler.cpp
-    src/scoped_actor.cpp
-    src/serializer.cpp
-    src/shared_spinlock.cpp
-    src/singleton_manager.cpp
-    src/stream.cpp
-    src/string_serialization.cpp
-    src/sync_request_bouncer.cpp
-    src/tcp_acceptor.cpp
-    src/tcp_io_stream.cpp
-    src/to_uniform_name.cpp
-    src/type_lookup_table.cpp
-    src/unicast_network.cpp
-    src/uniform_type_info.cpp
-    src/uniform_type_info_map.cpp
-    src/yield_interface.cpp)
-
-if (BOOST_ROOT)
-  # Prevent falling back to system paths when using a custom Boost prefix.
-  set(Boost_NO_SYSTEM_PATHS true)
-endif ()
-
-set(INCLUDE_DIRS .)
-set(LD_DIRS)
-set(LD_FLAGS ${CMAKE_LD_LIBS})
-
-if (APPLE)
-  # -pthread is ignored on MacOSX
-elseif (UNIX)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-elseif (MINGW)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-  set(LD_FLAGS "ws2_32 -liphlpapi")
-endif ()
-
-if (DISABLE_MEM_MANAGEMENT)
-  add_definitions(-DBOOST_ACTOR_DISABLE_MEM_MANAGEMENT)
-endif (DISABLE_MEM_MANAGEMENT)
-
-if (STANDALONE_BUILD)
-  add_definitions(-DBOOST_ACTOR_STANDALONE_BUILD)
-endif (STANDALONE_BUILD)
-
-#find_package(Boost 1.54.0 COMPONENTS REQUIRED system context coroutine thread)
-find_package(Boost 1.53.0 COMPONENTS REQUIRED system thread)
-set(LD_FLAGS ${LD_FLAGS} ${Boost_COROUTINE_LIBRARY} ${Boost_CONTEXT_LIBRARY} ${Boost_SYSTEM_LIBRARY})
-# This hack fixes a problem when the linker search path is the same as
-# the one provided by the compiler. In this case, CMake replaces the absolute
-# path (e.g., /path/to/lib.so) with -l<lib>, which may cause it to pick up the wrong
-# library. So when this replacement happens, we ensure that the right
-# library gets picked by adding a -L directive for the affected libraries
-# (which is just Boost Context here).
-set(CMAKE_EXE_LINKER_FLAGS -L${Boost_LIBRARY_DIRS})
-set(INCLUDE_DIRS ${INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
-set(LD_DIRS ${LD_DIRS} ${Boost_LIBRARY_DIRS})
-
-# set compiler flag when compiling w/o context-switching actors
-# DEFAULT for now, because the Context API seems to be broken again
-#if (DISABLE_CONTEXT_SWITCHING)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBOOST_ACTOR_DISABLE_CONTEXT_SWITCHING")
-#endif ()
-
-# build shared library if not compiling static only
-if (NOT "${BOOST_ACTOR_BUILD_STATIC_ONLY}" STREQUAL "yes")
-  add_library(libboost_actor SHARED ${LIBBOOST_ACTOR_SRC} ${LIBBOOST_ACTOR_HDRS})
-  target_link_libraries(libboost_actor ${LD_FLAGS})
-  set(LIBRARY_VERSION ${LIBBOOST_ACTOR_VERSION_MAJOR}.${LIBBOOST_ACTOR_VERSION_MINOR}.${LIBBOOST_ACTOR_VERSION_PATCH})
-  set(LIBRARY_SOVERSION ${LIBBOOST_ACTOR_VERSION_MAJOR})
-  set_target_properties(libboost_actor
-                        PROPERTIES
-                        SOVERSION 0
-                        VERSION 0
-                        OUTPUT_NAME boost_actor)
-  if(NOT MINGW)
-    install(TARGETS libboost_actor LIBRARY DESTINATION lib)
+macro(to_int_value name)
+  if(${name})
+    set(${name}_INT 1)
+  else()
+    set(${name}_INT -1)
   endif()
-endif ()
+endmacro()
+to_int_value(BOOST_ACTOR_LOG_LEVEL)
+to_int_value(BOOST_ACTOR_NO_MEM_MANAGEMENT)
+to_int_value(BOOST_ACTOR_ENABLE_RUNTIME_CHECKS)
 
-# build static library only if --build-static or --build-static-only was set
-if ("${BOOST_ACTOR_BUILD_STATIC_ONLY}" STREQUAL "yes" OR "${BOOST_ACTOR_BUILD_STATIC}" STREQUAL "yes")
-  add_library(libboost_actorStatic STATIC ${LIBBOOST_ACTOR_HDRS} ${LIBBOOST_ACTOR_SRC})
-  set_target_properties(libboost_actorStatic PROPERTIES OUTPUT_NAME boost_actor_static)
-  install(TARGETS libboost_actorStatic ARCHIVE DESTINATION lib)
-endif ()
+# find boost
+set(Boost_USE_MULTITHREADED ON)
+find_package(Boost COMPONENTS system unit_test_framework program_options REQUIRED)
+include_directories(${Boost_INCLUDE_DIRS})
+set(LD_DIRS ${LD_DIRS} ${Boost_LIBRARIES})
+set(LD_FLAGS ${LD_FLAGS} ${Boost_SYSTEM_LIBRARY})
+set(BOOST_ACTOR_USE_ASIO_INT 1)
 
-link_directories(${LD_DIRS})
-include_directories(${INCLUDE_DIRS})
-
-# install includes
-install(DIRECTORY boost/actor/ DESTINATION include/boost/actor FILES_MATCHING PATTERN "*.hpp")
-
-# process cmake_uninstall.cmake.in
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
-               "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/build_config.hpp.in"
+               "${CMAKE_CURRENT_SOURCE_DIR}/libboost_actor_core/boost/actor/detail/build_config.hpp"
                IMMEDIATE @ONLY)
 
+
+################################################################################
+#                           setup for install target                           #
+################################################################################
+
+# install includes from core
+install(DIRECTORY libboost_actor_core/boost/actor/
+        DESTINATION include/caf FILES_MATCHING PATTERN "*.hpp")
+# install includes from io
+install(DIRECTORY libboost_actor_io/boost/actor/ DESTINATION include/caf
+        FILES_MATCHING PATTERN "*.hpp")
+# install includes from test
+install(DIRECTORY libboost_actor_test/boost/actor/ DESTINATION include/caf
+        FILES_MATCHING PATTERN "*.hpp")
+# install includes from opencl
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libboost_actor_opencl/CMakeLists.txt")
+  install(DIRECTORY libboost_actor_opencl/boost/actor/ DESTINATION include/caf
+        FILES_MATCHING PATTERN "*.hpp")
+endif()
+
+# process cmake_uninstall.cmake.in
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+               IMMEDIATE @ONLY)
 # add uninstall target
 add_custom_target(uninstall
-                  COMMAND ${CMAKE_COMMAND} -P
-                  ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
+                  COMMAND "${CMAKE_COMMAND}" -P
+                  "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
 
-# setting path to boost_actor headers and libboost_actor
-set (BOOST_ACTOR_INCLUDE_PATH ${CMAKE_SOURCE_DIR}/boost.actor)
-set (BOOST_ACTOR_INCLUDE ${BOOST_ACTOR_INCLUDE_PATH})
 
-if ("${BOOST_ACTOR_BUILD_STATIC_ONLY}" STREQUAL "yes")
-  set (BOOST_ACTOR_LIBRARY ${LIBRARY_OUTPUT_PATH}/libboost_actor_static.a ${LD_FLAGS})
-else ()
-  if (APPLE)
-    if ("${CMAKE_GENERATOR}" STREQUAL "Xcode")
-      set (BOOST_ACTOR_LIBRARY "-lboost_actor")
-    else ()
-      set (BOOST_ACTOR_LIBRARY ${LIBRARY_OUTPUT_PATH}/libboost_actor.dylib)
-    endif ()
-    #set (BOOST_ACTOR_LIBRARY -L${LIBRARY_OUTPUT_PATH} -lboost_actor)
-  elseif (UNIX)
-    set (BOOST_ACTOR_LIBRARY ${LIBRARY_OUTPUT_PATH}/libboost_actor.so)
-  elseif (MINGW)
-    set (BOOST_ACTOR_LIBRARY ${LIBRARY_OUTPUT_PATH}/libboost_actor.dll)
-  else ()
-    message (SEND_FATAL "Host platform not supported ...")
-  endif ()
-endif ()
+################################################################################
+#                       set inclue paths for subprojects                       #
+################################################################################
 
-# set up subdirectories
-if (NOT "${BOOST_ACTOR_NO_UNIT_TESTS}" STREQUAL "yes")
+# path to caf core & io headers
+set(LIBBOOST_ACTOR_INCLUDE_DIRS
+    "${CMAKE_CURRENT_SOURCE_DIR}/libboost_actor_core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libboost_actor_io")
+# enable tests if not disabled
+if(NOT BOOST_ACTOR_NO_UNIT_TESTS)
   enable_testing()
-  add_subdirectory(unit_testing)
-  if ("${BOOST_ACTOR_BUILD_STATIC_ONLY}" STREQUAL "yes")
-    add_dependencies(all_unit_tests libboost_actorStatic)
-  else ()
-    add_dependencies(all_unit_tests libboost_actor)
-  endif ()
-endif ()
-if (NOT "${BOOST_ACTOR_NO_EXAMPLES}" STREQUAL "yes")
-  add_subdirectory(examples)
-  if ("${BOOST_ACTOR_BUILD_STATIC_ONLY}" STREQUAL "yes")
-    add_dependencies(all_examples libboost_actorStatic)
-  else ()
-    add_dependencies(all_examples libboost_actor)
-  endif ()
-endif ()
+  macro(add_unit_tests globstr)
+    file(GLOB_RECURSE tests "${globstr}")
+    set(BOOST_ACTOR_ALL_UNIT_TESTS ${BOOST_ACTOR_ALL_UNIT_TESTS} ${tests})
+  endmacro()
+else()
+  macro(add_unit_tests globstr)
+    # do nothing (unit tests disabled)
+  endmacro()
+endif()
+# all projects need the headers of the core components
+include_directories("${LIBBOOST_ACTOR_INCLUDE_DIRS}")
 
-# set optional flags
-string(TOUPPER ${CMAKE_BUILD_TYPE} build_type)
-set(CONTEXT_SWITCHING "yes")
-if (DISABLE_CONTEXT_SWITCHING)
-    set(CONTEXT_SWITCHING "no")
-endif ()
+
+################################################################################
+#                               add subprojects                                #
+################################################################################
+
+# core library
+add_subdirectory(libboost_actor_core)
+add_unit_tests("libboost_actor_core/test/*.cpp")
+
+# set core lib for sub directories
+if(NOT BOOST_ACTOR_BUILD_STATIC_ONLY)
+  set(LIBBOOST_ACTOR_CORE_LIBRARY libboost_actor_core_shared)
+else()
+  set(LIBBOOST_ACTOR_CORE_LIBRARY libboost_actor_core_static)
+endif()
+
+# I/O library
+add_subdirectory(libboost_actor_io)
+add_unit_tests("libboost_actor_io/test/*.cpp")
+
+# set io lib for sub directories
+if(NOT BOOST_ACTOR_BUILD_STATIC_ONLY)
+  set(LIBBOOST_ACTOR_IO_LIBRARY libboost_actor_io_shared)
+else()
+  set(LIBBOOST_ACTOR_IO_LIBRARY libboost_actor_io_static)
+endif()
+
+# tell CMake I/O depends on core
+add_dependencies(libboost_actor_io libboost_actor_core)
+
+# set LIBBOOST_ACTOR_LIBRARIES for other subprojects
+set(LIBBOOST_ACTOR_LIBRARIES "${LIBBOOST_ACTOR_CORE_LIBRARY}"
+                     "${LIBBOOST_ACTOR_IO_LIBRARY}"
+                     "${LIBBOOST_ACTOR_OPENCL_LIBRARY}")
+
+# build examples if not being told otherwise
+if(NOT BOOST_ACTOR_NO_EXAMPLES)
+  add_subdirectory(examples)
+  add_dependencies(all_examples libboost_actor_io libboost_actor_core)
+endif()
+
+
+################################################################################
+#                               unit tests setup                               #
+################################################################################
+
+if(NOT BOOST_ACTOR_NO_UNIT_TESTS)
+  add_custom_target(all_unit_tests)
+  # enumerate all test suites.
+  foreach(test ${BOOST_ACTOR_ALL_UNIT_TESTS})
+    file(STRINGS ${test} contents)
+    foreach(line ${contents})
+      if ("${line}" MATCHES "BOOST_TEST_MODULE (.*)")
+        string(REGEX REPLACE ".* BOOST_TEST_MODULE (.*)" "\\1" suite ${line})
+        list(APPEND suites ${suite})
+      endif()
+    endforeach()
+    add_executable(boost-actor-test-${suite} ${test})
+    target_link_libraries(boost-actor-test-${suite}
+                          ${LD_FLAGS}
+                          ${LIBBOOST_ACTOR_LIBRARIES}
+                          ${PTHREAD_LIBRARIES})
+  add_dependencies(boost-actor-test-${suite} all_unit_tests)
+  endforeach()
+  # creates one CMake test per test suite.
+  macro (make_test suite)
+    string(REPLACE " " "_" test_name ${suite})
+    set(caf_test_binary ${EXECUTABLE_OUTPUT_PATH}/boost-actor-test-${suite})
+    add_test(${test_name} ${caf_test_binary} --log_level=all)
+  endmacro ()
+  list(LENGTH suites num_suites)
+  message(STATUS "Found ${num_suites} test suites")
+  foreach(suite ${suites})
+    make_test("${suite}")
+  endforeach ()
+endif()
+
+
+################################################################################
+#                                 LateX setup                                  #
+################################################################################
+
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/manual/variables.tex.in"
+               "${CMAKE_CURRENT_SOURCE_DIR}/manual/variables.tex"
+               @ONLY)
+
+
+################################################################################
+#                                Doxygen setup                                 #
+################################################################################
 
 # check for doxygen and add custom "doc" target to Makefile
 find_package(Doxygen)
-if (DOXYGEN_FOUND)
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile
+if(DOXYGEN_FOUND)
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/doc/Doxyfile.in"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile"
                  @ONLY)
-  add_custom_target(doc ${DOXYGEN_EXECUTABLE} ${CMAKE_HOME_DIRECTORY}/Doxyfile
-                    WORKING_DIRECTORY ${CMAKE_HOME_DIRECTORY}
+  add_custom_target(doc "${DOXYGEN_EXECUTABLE}"
+                    "${CMAKE_HOME_DIRECTORY}/Doxyfile"
+                    WORKING_DIRECTORY "${CMAKE_HOME_DIRECTORY}"
                     COMMENT "Generating API documentation with Doxygen"
                     VERBATIM)
-endif (DOXYGEN_FOUND)
+endif(DOXYGEN_FOUND)
 
-# set variables for summary
+
+################################################################################
+#                     Add additional project files to GUI                      #
+################################################################################
+
+file(GLOB_RECURSE script_files "scripts/*")
+add_custom_target(gui_dummy SOURCES configure ${script_files})
+
+################################################################################
+#                                print summary                                 #
+################################################################################
+
+# set human-readable representation for log level
 set(LOG_LEVEL_STR "none")
-if (BOOST_ACTOR_LOG_LEVEL)
-  if (${BOOST_ACTOR_LOG_LEVEL} EQUAL 0)
+if(BOOST_ACTOR_LOG_LEVEL)
+  if(${BOOST_ACTOR_LOG_LEVEL} EQUAL 0)
     set(LOG_LEVEL_STR "ERROR")
-  elseif (${BOOST_ACTOR_LOG_LEVEL} EQUAL 1)
+  elseif(${BOOST_ACTOR_LOG_LEVEL} EQUAL 1)
     set(LOG_LEVEL_STR "WARNING")
-  elseif (${BOOST_ACTOR_LOG_LEVEL} EQUAL 2)
+  elseif(${BOOST_ACTOR_LOG_LEVEL} EQUAL 2)
     set(LOG_LEVEL_STR "INFO")
-  elseif (${BOOST_ACTOR_LOG_LEVEL} EQUAL 3)
+  elseif(${BOOST_ACTOR_LOG_LEVEL} EQUAL 3)
     set(LOG_LEVEL_STR "DEBUG")
-  elseif (${BOOST_ACTOR_LOG_LEVEL} EQUAL 4)
+  elseif(${BOOST_ACTOR_LOG_LEVEL} EQUAL 4)
     set(LOG_LEVEL_STR "TRACE")
-  else ()
+  else()
     set(LOG_LEVEL_STR "invalid")
-  endif ()
-endif (BOOST_ACTOR_LOG_LEVEL)
-
-macro (toYesNo in out)
-  if (${in})
-    set(${out} "yes")
-  else ()
-    set(${out} "no")
-  endif ()
-endmacro ()
-
-macro (invertYesNo in out)
-  if ("${in}" STREQUAL "yes")
-    set(${out} "no")
-  else ()
-    set(${out} "yes")
-  endif ()
-endmacro ()
-
-toYesNo(ENABLE_DEBUG DEBUG_MODE_STR)
-toYesNo(ENABLE_OPENCL BUILD_OPENCL_STR)
-toYesNo(DISABLE_MEM_MANAGEMENT DISABLE_MEM_MANAGEMENT_STR)
-invertYesNo(BOOST_ACTOR_NO_EXAMPLES BUILD_EXAMPLES)
-invertYesNo(BOOST_ACTOR_NO_UNIT_TESTS BUILD_UNIT_TESTS)
-invertYesNo(DISABLE_MEM_MANAGEMENT_STR WITH_MEM_MANAGEMENT)
-
-if (NOT "${BOOST_ACTOR_BUILD_STATIC}" STREQUAL "yes")
-  set(BOOST_ACTOR_BUILD_STATIC "no")
-endif ()
-
-if (NOT "${BOOST_ACTOR_BUILD_STATIC_ONLY}" STREQUAL "yes")
-  set(BOOST_ACTOR_BUILD_STATIC_ONLY "no")
-else ()
-  set(BOOST_ACTOR_BUILD_STATIC "yes")
-endif ()
-
-# done (print summary)
-message("\n====================|  Build Summary  |===================="
+  endif()
+endif()
+# little helper macro to invert a boolean
+macro(invertYesNo in out)
+  if(${in})
+    set(${out} no)
+  else()
+    set(${out} yes)
+  endif()
+endmacro()
+# invert BOOST_ACTOR_NO_* variables for nicer output
+invertYesNo(BOOST_ACTOR_NO_EXAMPLES BOOST_ACTOR_BUILD_EXAMPLES)
+invertYesNo(BOOST_ACTOR_NO_UNIT_TESTS BOOST_ACTOR_BUILD_UNIT_TESTS)
+invertYesNo(BOOST_ACTOR_NO_NEXUS BOOST_ACTOR_BUILD_NEXUS)
+invertYesNo(BOOST_ACTOR_NO_CASH BOOST_ACTOR_BUILD_CASH)
+invertYesNo(BOOST_ACTOR_NO_MEM_MANAGEMENT BOOST_ACTOR_BUILD_MEM_MANAGEMENT)
+invertYesNo(BOOST_ACTOR_NO_BENCHMARKS BOOST_ACTOR_BUILD_BENCHMARKS)
+# collect all compiler flags
+string(TOUPPER "${CMAKE_BUILD_TYPE}" UPPER_BUILD_TYPE)
+set(ALL_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${UPPER_BUILD_TYPE}}")
+# done
+if(NOT BOOST_ACTOR_NO_SUMMARY)
+  message(STATUS
+        "\n====================|  Build Summary  |===================="
+        "\n"
+        "\nLibcaf version:    ${BOOST_ACTOR_VERSION}"
         "\n"
         "\nBuild type:        ${CMAKE_BUILD_TYPE}"
-        "\nDebug mode:        ${DEBUG_MODE_STR}"
-        "\nLog level:         ${LOG_LEVEL_STR}"
-        "\nContext switching: ${CONTEXT_SWITCHING}"
-        "\nValgrind:          ${VALGRIND}"
-        "\nBuild examples:    ${BUILD_EXAMPLES}"
-        "\nBuild unit tests:  ${BUILD_UNIT_TESTS}"
         "\nBuild static:      ${BOOST_ACTOR_BUILD_STATIC}"
-        "\nBulid static only: ${BOOST_ACTOR_BUILD_STATIC_ONLY}"
-        "\nBuild OpenCL:      ${BUILD_OPENCL_STR}"
-        "\nWith mem. mgmt.:   ${WITH_MEM_MANAGEMENT}"
+        "\nBuild static only: ${BOOST_ACTOR_BUILD_STATIC_ONLY}"
+        "\nRuntime checks:    ${BOOST_ACTOR_ENABLE_RUNTIME_CHECKS}"
+        "\nLog level:         ${LOG_LEVEL_STR}"
+        "\nWith mem. mgmt.:   ${BOOST_ACTOR_BUILD_MEM_MANAGEMENT}"
+        "\n"
+        "\nBuild examples:    ${BOOST_ACTOR_BUILD_EXAMPLES}"
+        "\nBuild unit tests:  ${BOOST_ACTOR_BUILD_UNIT_TESTS}"
         "\n"
         "\nCXX:               ${CMAKE_CXX_COMPILER}"
-        "\nCXXFLAGS:          ${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${build_type}}"
-        "\nLD_DIRS:           ${LD_DIRS}"
+        "\nCXXFLAGS:          ${ALL_CXX_FLAGS}"
         "\nLIBRARIES:         ${LD_FLAGS}"
         "\n"
-        "\nSource directory:  ${CMAKE_SOURCE_DIR}"
-        "\nBuild directory:   ${CMAKE_BINARY_DIR}"
+        "\nSource directory:  ${CMAKE_CURRENT_SOURCE_DIR}"
+        "\nBuild directory:   ${CMAKE_CURRENT_BINARY_DIR}"
         "\nExecutable path:   ${EXECUTABLE_OUTPUT_PATH}"
         "\nLibrary path:      ${LIBRARY_OUTPUT_PATH}"
         "\nInstall prefix:    ${CMAKE_INSTALL_PREFIX}"
-        "\n"
-        "\nBoost:             ${Boost_INCLUDE_DIR}"
+        "\nGenerator:         ${CMAKE_GENERATOR}"
         "\n"
         "\n===========================================================\n")
+endif()

@@ -1,20 +1,17 @@
-Boost.Actor
-=======
+# Boost.Actor
 
-Boost.Actor is an LGPL C++11 actor model implementation featuring lightweight & fast
-actor implementations, pattern matching for messages,
-network transparent messaging, and more.
+Boost.Actor is a Boost-version of CAF, the [C++ Actor
+Framework](http://actor-framework.org). It features lightweight & fast actor
+implementations, pattern matching for messages, network transparent messaging,
+and more.
 
-
-Get the Sources
----------------
+## Get the Sources
 
 * git clone https://github.com/Neverlord/boost.actor.git
 * cd boost.actor
 
 
-First Steps
------------
+## First Steps
 
 * ./configure
 * make
@@ -24,29 +21,26 @@ It is recommended to run the unit tests as well.
 
 * make test
 
-Please submit a bug report that includes (a) your compiler version, (b) your OS,
-and (c) the content of the file build/Testing/Temporary/LastTest.log
-if an error occurs.
+Please submit a bug report that includes (a) your compiler version, (b) your
+OS, and (c) the content of the file build/Testing/Temporary/LastTest.log if an
+error occurs.
 
 
-Dependencies
-------------
+## Dependencies
 
 * CMake
 * Boost
 * Pthread (until C++11 compilers support the new `thread_local` keyword)
 
 
-Supported Compilers
--------------------
+## Supported Compilers
 
-* GCC >= 4.7
-* Clang >= 3.2
+* GCC >= 4.8
+* Clang >= 3.4
 
 
-Supported Operating Systems
----------------------------
+## Supported Operating Systems
 
 * Linux
 * Mac OS X
-* Windows (currently only via MinGW)
+* Windows (beta)

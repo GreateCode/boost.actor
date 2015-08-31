@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 project(boost_actor_examples CXX)
 
-find_package(Boost 1.53.0 COMPONENTS REQUIRED program_options)
 set(LD_FLAGS ${LD_FLAGS} ${Boost_PROGRAM_OPTIONS_LIBRARY})
 # This hack fixes a problem when the linker search path is the same as
 # the one provided by the compiler. In this case, CMake replaces the absolute
@@ -17,7 +16,8 @@ add_custom_target(all_examples)
 
 macro(add name folder)
   add_executable(${name} ${folder}/${name}.cpp ${ARGN})
-  target_link_libraries(${name} ${LD_FLAGS} ${CMAKE_DL_LIBS} ${BOOST_ACTOR_LIBRARY} ${PTHREAD_LIBRARIES})
+  target_link_libraries(${name} ${LD_FLAGS} ${CMAKE_DL_LIBS}
+                        ${LIBBOOST_ACTOR_LIBRARIES} ${PTHREAD_LIBRARIES})
   add_dependencies(${name} all_examples)
 endmacro()
 
@@ -33,6 +33,5 @@ add(aout .)
 add(calculator message_passing)
 add(typed_calculator message_passing)
 add(distributed_calculator remote_actors)
-add(simple_broker remote_actors)
 add(group_server remote_actors)
 add(group_chat remote_actors)

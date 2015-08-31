@@ -1,7 +1,7 @@
 \section{Group Communication}
 \label{Sec::Group}
 
-\ba supports publish/subscribe-based group communication.
+\lib supports publish/subscribe-based group communication.
 Actors can join and leave groups and send messages to groups.
 
 \begin{lstlisting}
@@ -9,7 +9,7 @@ std::string group_module = ...;
 std::string group_id = ...;
 auto grp = group::get(group_module, group_id);
 self->join(grp);
-self->send(grp, atom("test"));
+self->send(grp, "test");
 self->leave(grp);
 \end{lstlisting}
 
@@ -26,11 +26,26 @@ The \lstinline^"local"^ group module creates groups for in-process communication
 For example, a group for GUI related events could be identified by \lstinline^group::get("local", "GUI events")^.
 The group ID \lstinline^"GUI events"^ uniquely identifies a singleton group instance of the module \lstinline^"local"^.
 
-\subsection{Spawn Actors in Groups}
+\subsection{Remote Groups}
+\label{Sec::Group::RemoteGroups}
+
+To deploy groups in a network, one host can act as group server by publishing its local groups at any given port:
+
+\begin{lstlisting}
+void publish_local_groups(std::uint16_t port, const char* addr)
+\end{lstlisting}
+
+By calling \lstinline^group::get("remote", "<group>@<host>:<port>")^, other hosts are now able to connect to a remotely running group.
+Please note that the group communication is no longer available once the server disconnects.
+This implementation uses N-times unicast underneath.
+It is worth mentioning that user-implemented groups can be build on top of IP multicast or overlay technologies such as Scribe to achieve better performance or reliability.
+
+\clearpage
+\subsection{Spawning Actors in Groups}
 \label{Sec::Group::Spawn}
 
 The function \lstinline^spawn_in_group^ can be used to create actors as members of a group.
-The function causes the newly created actors to call \lstinline^self->join(...)^ immediately and before \lstinline^spawn_in_group^ returns. 
+The function causes the newly created actors to call \lstinline^join(...)^ immediately and before \lstinline^spawn_in_group^ returns. 
 The usage of \lstinline^spawn_in_group^ is equal to \lstinline^spawn^, except for an additional group argument.
 The group handle is always the first argument, as shown in the examples below.
 

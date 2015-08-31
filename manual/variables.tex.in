@@ -1,0 +1,9 @@
+\newcommand{\lib}{Boost.Actor\xspace}
+
+\newcommand{\libtitle}{%
+\texttt{\huge{\textbf{\lib}}}\\~\\A C++ framework for actor programming\\~\\~\\~\\%
+}
+
+\newcommand{\libsubtitle}{%
+User Manual\\\normalsize{\lib version @BOOST_ACTOR_VERSION@}\vfill%
+}

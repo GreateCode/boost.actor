@@ -1,80 +1,113 @@
 /******************************************************************************\
  * This example is a very basic, non-interactive math service implemented     *
  * for both the blocking and the event-based API.                             *
-\******************************************************************************/
+\ ******************************************************************************/
 
+#include <tuple>
 #include <cassert>
 #include <iostream>
+
 #include "boost/actor/all.hpp"
 
 using std::cout;
+using std::cerr;
 using std::endl;
+using boost::none;
+using boost::join;
+using boost::variant;
+using boost::optional;
+using boost::is_any_of;
+using boost::token_compress_on;
 using namespace boost::actor;
 
+using plus_atom = atom_constant<atom("plus")>;
+using minus_atom = atom_constant<atom("minus")>;
+using result_atom = atom_constant<atom("result")>;
+
+using calculator_actor =
+  typed_actor<replies_to<plus_atom, int, int>::with<result_atom, int>,
+              replies_to<minus_atom, int, int>::with<result_atom, int>>;
+
 // implementation using the blocking API
-void blocking_math_fun(blocking_actor* self) {
-    bool done = false;
-    self->do_receive (
-        // "arg_match" matches the parameter types of given lambda expression
-        // thus, it's equal to
-        // - on<atom("plus"), int, int>()
-        // - on(atom("plus"), val<int>, val<int>)
-        on(atom("plus"), arg_match) >> [](int a, int b) {
-            return make_message(atom("result"), a + b);
-        },
-        on(atom("minus"), arg_match) >> [](int a, int b) {
-            return make_message(atom("result"), a - b);
-        },
-        on(atom("quit")) >> [&]() {
-            // note: this actor uses the blocking API, hence self->quit()
-            //       would force stack unwinding by throwing an exception
-            done = true;
-        }
-    ).until([&] { return done; });
+void blocking_calculator(blocking_actor* self) {
+  self->receive_loop (
+    [](plus_atom, int a, int b) {
+      return std::make_tuple(result_atom::value, a + b);
+    },
+    [](minus_atom, int a, int b) {
+      return std::make_tuple(result_atom::value, a - b);
+    },
+    others >> [=] {
+      cout << "unexpected: " << to_string(self->current_message()) << endl;
+    }
+  );
 }
 
-void calculator(event_based_actor* self) {
-    // execute this behavior until actor terminates
-    self->become (
-        on(atom("plus"), arg_match) >> [](int a, int b) {
-            return make_message(atom("result"), a + b);
-        },
-        on(atom("minus"), arg_match) >> [](int a, int b) {
-            return make_message(atom("result"), a - b);
-        },
-        on(atom("quit")) >> [=] {
-            // terminate actor with normal exit reason
-            self->quit();
-        }
-    );
+// implementation using the event-based API
+behavior calculator(event_based_actor* self) {
+  return behavior{
+    [](plus_atom, int a, int b) {
+      return std::make_tuple(result_atom::value, a + b);
+    },
+    [](minus_atom, int a, int b) {
+      return std::make_tuple(result_atom::value, a - b);
+    },
+    others >> [=] {
+      cerr << "unexpected: " << to_string(self->current_message()) << endl;
+    }
+  };
 }
 
-void tester(event_based_actor* self, const actor& testee) {
-    self->link_to(testee);
-    // will be invoked if we receive an unexpected response message
-    self->on_sync_failure([=] {
-        aout(self) << "AUT (actor under test) failed" << endl;
-        self->quit(exit_reason::user_shutdown);
-    });
-    // first test: 2 + 1 = 3
-    self->sync_send(testee, atom("plus"), 2, 1).then(
-        on(atom("result"), 3) >> [=] {
-            // second test: 2 - 1 = 1
-            self->sync_send(testee, atom("minus"), 2, 1).then(
-                on(atom("result"), 1) >> [=] {
-                    // both tests succeeded
-                    aout(self) << "AUT (actor under test) seems to be ok"
-                               << endl;
-                    self->send(testee, atom("quit"));
-                }
-            );
+// implementation using the statically typed API
+calculator_actor::behavior_type typed_calculator() {
+  return {
+    [](plus_atom, int a, int b) {
+      return std::make_tuple(result_atom::value, a + b);
+    },
+    [](minus_atom, int a, int b) {
+      return std::make_tuple(result_atom::value, a - b);
+    }
+  };
+}
+
+// tests a calculator instance
+template <class Handle>
+void tester(event_based_actor* self, const Handle& testee, int x, int y) {
+  self->link_to(testee);
+  // will be invoked if we receive an unexpected response message
+  self->on_sync_failure([=] {
+    aout(self) << "AUT (actor under test) failed" << endl;
+    self->quit(exit_reason::user_shutdown);
+  });
+  // first test: 2 + 1 = 3
+  self->sync_send(testee, plus_atom::value, x, y).then(
+    [=](result_atom, int res1) {
+      aout(self) << x << " + " << y << " = " << res1 << endl;
+      self->sync_send(testee, minus_atom::value, x, y).then(
+        [=](result_atom, int res2) {
+          // both tests succeeded
+        aout(self) << x << " - " << y << " = " << res2 << endl;
+          self->quit(exit_reason::user_shutdown);
         }
-    );
+      );
+    }
+  );
+}
+
+void test_calculators() {
+  scoped_actor self;
+  aout(self) << "blocking actor:" << endl;
+  self->spawn(tester<actor>, spawn<blocking_api>(blocking_calculator), 1, 2);
+  self->await_all_other_actors_done();
+  aout(self) << "event-based actor:" << endl;
+  self->spawn(tester<actor>, spawn(calculator), 3, 4);
+  self->await_all_other_actors_done();
+  aout(self) << "typed actor:" << endl;
+  self->spawn(tester<calculator_actor>, spawn(typed_calculator), 5, 6);
+  self->await_all_other_actors_done();
 }
 
 int main() {
-    spawn(tester, spawn(calculator));
-    await_all_actors_done();
-    shutdown();
-    return 0;
+  test_calculators();
+  shutdown();
 }

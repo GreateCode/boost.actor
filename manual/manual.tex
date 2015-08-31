@@ -30,6 +30,10 @@
 \parindent 0pt
 \parskip 8pt
 
+\pretolerance=150
+\tolerance=500
+\hbadness=752
+
 \definecolor{blue}{rgb}{0,0,1}
 \definecolor{violet}{rgb}{0.5,0,0.5}
 
@@ -37,15 +41,15 @@
 \definecolor{darkblue}{rgb}{0,0,0.5}
 \definecolor{darkgreen}{rgb}{0,0.5,0}
 
-\newcommand{\ba}{\textit{Boost.Actor}\xspace}
-
 \pagenumbering{arabic}
+
+\input{variables}
 
 \title{%
 %BEGIN LATEX
-\texttt{\huge{\textbf{Boost.Actor}}}\\~\\A C++ library for actor programming\\~\\~\\~\\%
+\libtitle
 %END LATEX
-User Manual\vfill}
+\libsubtitle}
 
 \author{Dominik Charousset}
 
@@ -114,6 +118,7 @@ User Manual\vfill}
 % content
 \include{Introduction}
 \include{FirstSteps}
+\include{PatternMatching}
 \include{Actors}
 \include{SendingMessages}
 \include{ReceivingMessages}
@@ -124,10 +129,12 @@ User Manual\vfill}
 \include{NetworkTransparency}
 \include{NetworkIO}
 \include{GroupCommunication}
+\include{ManagingGroupsOfWorkers}
 \include{ActorCompanions}
 \include{TypeSystem}
 \include{BlockingAPI}
 \include{StronglyTypedActors}
+\include{Messages}
 \include{CommonPitfalls}
 \include{Appendix}
 

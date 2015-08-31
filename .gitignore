@@ -2,6 +2,7 @@
 Doxyfile
 cppa.creator.user*
 html/
+doc/
 build/*
 cli_build/*
 build-clang/*
@@ -13,3 +14,5 @@ manual/manual.pdf
 manual/manual.html
 manual/build-pdf/*
 manual/build-html/*
+manual/variables.tex
+build_config.hpp

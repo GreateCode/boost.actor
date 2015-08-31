@@ -4,11 +4,11 @@
 
 %\subsection{Some Terminology}
 
-To compile \ba, you will need CMake and a C++11 compiler (and Boost of course). To get and compile the sources, open a terminal (on Linux or Mac OS X) and type:
+To compile \lib, you will need CMake and a C++11 compiler. To get and compile the sources, open a terminal (on Linux or Mac OS X) and type:
 
 \begin{verbatim}
-git clone https://github.com/Neverlord/boost.actor.git
-cd boost.actor
+git clone https://github.com/actor-framework/actor-framework
+cd actor-framework
 ./configure
 make
 make install [as root, optional]
@@ -37,7 +37,7 @@ Please submit a bug report that includes (a) your compiler version, (b) your OS,
 \subsection{Supported Compilers}
 
 \begin{itemize*}
-  \item GCC $\ge$ 4.7
+  \item GCC $\ge$ 4.8
   \item Clang $\ge$ 3.2
 \end{itemize*}
 
@@ -46,7 +46,10 @@ Please submit a bug report that includes (a) your compiler version, (b) your OS,
 \begin{itemize*}
 \item Linux
 \item Mac OS X
-\item Windows (currently only via MinGW)
+\item \textit{Note for MS Windows}:
+\lib relies on C++11 features such as unrestricted unions.
+We will support this platform as soon as Microsoft's compiler implements all required C++11 features.
+In the meantime, \lib can be used with MinGW.
 \end{itemize*}
 
 \clearpage
@@ -59,7 +62,13 @@ Please submit a bug report that includes (a) your compiler version, (b) your OS,
 #include "boost/actor/all.hpp"
 
 using namespace std;
-using namespace boost.actor;
+using boost::none;
+using boost::join;
+using boost::variant;
+using boost::optional;
+using boost::is_any_of;
+using boost::token_compress_on;
+using namespace boost::actor;
 
 behavior mirror(event_based_actor* self) {
     // return the (initial) actor behavior
