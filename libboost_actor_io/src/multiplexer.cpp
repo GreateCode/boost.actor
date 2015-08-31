@@ -21,7 +21,7 @@
  ******************************************************************************/
 
 #include "boost/actor/io/network/multiplexer.hpp"
-#include "boost/actor/io/network/asio_multiplexer.hpp"
+#include "boost/actor/io/network/asio_multiplexer.hpp" // default singleton
 
 namespace boost {
 namespace actor {
